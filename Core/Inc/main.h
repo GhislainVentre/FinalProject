@@ -62,22 +62,23 @@ enum STATE {START, BEGIN_MOVEMENT, IDLE, COMM, TRANSITION};
 enum SENS {UP, DOWN};
 enum ONOFF {ON, OFF};
 
+typedef struct {
+	enum ONOFF state;
+	enum SENS way;
+	uint8_t step;
+	uint16_t timer;
+	GPIO_TypeDef *pin[4];
+	uint16_t pin_nb[4];
+} STEPPER;
+
 void automate();
 
-void stepper0(int step);
-void stepper1(int step);
-void stepper2(int step);
-void stepper3(int step);
-void stepper4(int step);
-void stepper5(int step);
-void stepper6(int step);
-void stepper7(int step);
+void rotate(int, int);
 
 void Motor_Handling();
 void setStepperSens(enum SENS);
 void setStepperOnOff(enum ONOFF);
-void setStepperStep(int);
-void setStepperMethod();
+
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim);
 /* USER CODE END Private defines */

@@ -61,15 +61,29 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-#define DELAY 5000;
+#define DELAY 50000
 
 static unsigned int timer1=0;
 static unsigned int timer_ms=0;
 
-static enum SENS stepperSens[]   = {DOWN,DOWN,DOWN,DOWN,DOWN,DOWN,DOWN,DOWN};
-static enum ONOFF stepperONOFF[] = {ON,ON,ON,ON,ON,ON,ON,ON};
-static int stepperStep[] 		 = {0,0,0,0,0,0,0,0};
-static void (*pf)(int) = &stepper0;
+static STEPPER stepper[8] = {
+		{ON, DOWN, 0, DELAY, {GPIOB, GPIOB, GPIOB, GPIOB},
+							{GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_11, GPIO_PIN_10}},
+		{ON, DOWN, 0, DELAY, {GPIOA, GPIOC, GPIOB, GPIOC},
+							{GPIO_PIN_7, GPIO_PIN_4, GPIO_PIN_0, GPIO_PIN_5}},
+		{ON, DOWN, 0, DELAY, {GPIOA, GPIOA, GPIOA, GPIOA},
+							{GPIO_PIN_3, GPIO_PIN_4, GPIO_PIN_6, GPIO_PIN_5}},
+		{ON, DOWN, 0, DELAY, {GPIOC, GPIOA, GPIOA, GPIOA},
+							{GPIO_PIN_3, GPIO_PIN_0, GPIO_PIN_2, GPIO_PIN_1}},
+		{ON, DOWN, 0, DELAY, {GPIOC, GPIOC, GPIOC, GPIOC},
+							{GPIO_PIN_13, GPIO_PIN_14, GPIO_PIN_0, GPIO_PIN_15}},
+		{ON, DOWN, 0, DELAY, {GPIOB, GPIOB, GPIOB, GPIOB},
+							{GPIO_PIN_6, GPIO_PIN_7, GPIO_PIN_9, GPIO_PIN_8}},
+		{ON, DOWN, 0, DELAY, {GPIOD, GPIOB, GPIOB, GPIOB},
+							{GPIO_PIN_2, GPIO_PIN_3, GPIO_PIN_5, GPIO_PIN_4}},
+		{ON, DOWN, 0, DELAY, {GPIOA, GPIOC, GPIOC, GPIOC}, {GPIO_PIN_5,
+							GPIO_PIN_10, GPIO_PIN_12, GPIO_PIN_11}}
+};
 
 static enum STATE state = START;
 /* USER CODE END 0 */
@@ -136,10 +150,11 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL6;
   RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -342,7 +357,6 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
@@ -423,12 +437,13 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void automate() {
+	timer_ms = DELAY;
 	switch(state) {
-		case START: // Put every pin at max low level
+		case START:
 			setStepperSens(DOWN);
 			state = BEGIN_MOVEMENT;
 			break;
-		case TRANSITION: // Wait until defined DELAY
+		case TRANSITION:
 			HAL_TIM_Base_Start_IT(&htim2);
 			int timer2 = __HAL_TIM_GetCounter(&htim3);
 			if(timer2 >= timer1) {
@@ -441,7 +456,6 @@ void automate() {
 			setStepperOnOff(ON);
 			__HAL_TIM_SetCounter(&htim3, 0);
 			timer1 = __HAL_TIM_GetCounter(&htim3);
-			timer_ms = DELAY;
 			state = TRANSITION;
 			break;
 		case IDLE:
@@ -460,304 +474,64 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim) {
 	}
 }
 
-void stepper7(int step) {
+void rotate(int step, int nb_motor) {
 	// full drive
 	switch(step) {
 	case 0:
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);   // IN1
-		 HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, GPIO_PIN_SET);   // IN2
-		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_SET);   // IN3
-		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_11, GPIO_PIN_RESET);   // IN4
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[0], stepper[nb_motor].pin_nb[0], GPIO_PIN_RESET);   // IN1
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[1], stepper[nb_motor].pin_nb[1], GPIO_PIN_SET);   // IN2
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[2], stepper[nb_motor].pin_nb[2], GPIO_PIN_SET);   // IN3
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[3], stepper[nb_motor].pin_nb[3], GPIO_PIN_RESET);   // IN4
 		break;
 	case 1:
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);   // IN1
-		 HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, GPIO_PIN_SET);   // IN2
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET);   // IN3
-		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_11, GPIO_PIN_SET);   // IN4
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[0], stepper[nb_motor].pin_nb[0], GPIO_PIN_RESET);   // IN1
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[1], stepper[nb_motor].pin_nb[1], GPIO_PIN_SET);   // IN2
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[2], stepper[nb_motor].pin_nb[2], GPIO_PIN_RESET);   // IN3
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[3], stepper[nb_motor].pin_nb[3], GPIO_PIN_SET);   // IN4
 		break;
 	case 2:
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);   // IN1
-		 HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, GPIO_PIN_RESET);   // IN2
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET);   // IN3
-		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_11, GPIO_PIN_SET);   // IN4
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[0], stepper[nb_motor].pin_nb[0], GPIO_PIN_SET);   // IN1
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[1], stepper[nb_motor].pin_nb[1], GPIO_PIN_RESET);   // IN2
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[2], stepper[nb_motor].pin_nb[2], GPIO_PIN_RESET);   // IN3
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[3], stepper[nb_motor].pin_nb[3], GPIO_PIN_SET);   // IN4
 		break;
 	case 3:
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);   // IN1
-		 HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, GPIO_PIN_RESET);   // IN2
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);   // IN3
-		 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_11, GPIO_PIN_RESET);   // IN4
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[0], stepper[nb_motor].pin_nb[0], GPIO_PIN_SET);   // IN1
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[1], stepper[nb_motor].pin_nb[1], GPIO_PIN_RESET);   // IN2
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[2], stepper[nb_motor].pin_nb[2], GPIO_PIN_SET);   // IN3
+		 HAL_GPIO_WritePin(stepper[nb_motor].pin[3], stepper[nb_motor].pin_nb[3], GPIO_PIN_RESET);   // IN4
 		break;
 	}
-}
-
-void stepper6(int step) {
-	// full drive
-	switch(step) {
-	case 0:
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);   // IN1
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);   // IN2
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);   // IN3
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);   // IN4
-		break;
-	case 1:
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);   // IN1
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);   // IN2
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);   // IN3
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);   // IN4
-		break;
-	case 2:
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);   // IN1
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);   // IN2
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);   // IN3
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);   // IN4
-		break;
-	case 3:
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);   // IN1
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);   // IN2
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);   // IN3
-		 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);   // IN4
-		break;
-	}
-}
-
-void stepper5(int step) {
-	// full drive
-		switch(step) {
-		case 0:
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);   // IN4
-			break;
-		case 1:
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   // IN4
-			break;
-		case 2:
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   // IN4
-			break;
-		case 3:
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);   // IN4
-			break;
-		}
-}
-
-void stepper4(int step) {
-	// full drive
-		switch(step) {
-		case 0:
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_2, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_1, GPIO_PIN_RESET);   // IN4
-			break;
-		case 1:
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_2, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_1, GPIO_PIN_SET);   // IN4
-			break;
-		case 2:
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_2, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_1, GPIO_PIN_SET);   // IN4
-			break;
-		case 3:
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_2, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_1, GPIO_PIN_RESET);   // IN4
-			break;
-		}
-}
-
-void stepper3(int step) {
-	// full drive
-		switch(step) {
-		case 0:
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);   // IN4
-			break;
-		case 1:
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);   // IN4
-			break;
-		case 2:
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);   // IN4
-			break;
-		case 3:
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);   // IN4
-			break;
-		}
-}
-
-void stepper2(int step) {
-	// full drive
-		switch(step) {
-		case 0:
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);   // IN4
-			break;
-		case 1:
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   // IN4
-			break;
-		case 2:
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   // IN4
-			break;
-		case 3:
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);   // IN4
-			break;
-		}
-}
-
-void stepper1(int step) {
-	// full drive
-		switch(step) {
-		case 0:
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET);   // IN4
-			break;
-		case 1:
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET);   // IN4
-			break;
-		case 2:
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET);   // IN4
-			break;
-		case 3:
-			 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET);   // IN4
-			break;
-		}
-}
-
-void stepper0(int step) {
-	// full drive
-		switch(step) {
-		case 0:
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);   // IN4
-			break;
-		case 1:
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);   // IN1
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);   // IN2
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);   // IN4
-			break;
-		case 2:
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_RESET);   // IN3
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);   // IN4
-			break;
-		case 3:
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);   // IN1
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);   // IN2
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_SET);   // IN3
-			 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);   // IN4
-			break;
-		}
 }
 
 void Motor_Handling() {
 	static int nb_motor=0;
 
-	if(stepperONOFF[nb_motor] == OFF) { //skip step if nb_motor is OFF
-		nb_motor++;
-		return;
-	}
-
-	if(stepperSens[nb_motor]) { //change order of steps to correspond to wanted direction
-		(*pf)(stepperStep[nb_motor]);
-		if(stepperStep[nb_motor]>=3) stepperStep[nb_motor] = 0;
-		else stepperStep[nb_motor]++;
-	} else if(stepperSens[nb_motor]){
-		(*pf)(stepperStep[nb_motor]);
-		if(stepperStep[nb_motor]<=0) stepperStep[nb_motor] = 3;
-		else stepperStep[nb_motor]--;
-	}
-
-	switch(nb_motor) {
-	case 0:
-		pf = &stepper1;
-		break;
-	case 1:
-		pf = &stepper2;
-		break;
-	case 2:
-		pf = &stepper3;
-		break;
-	case 3:
-		pf = &stepper4;
-		break;
-	case 4:
-		pf = &stepper5;
-		break;
-	case 5:
-		pf = &stepper6;
-		break;
-	case 6:
-		pf = &stepper7;
-		break;
-	default:
-		pf = &stepper0;
-		break;
+	if(stepper[nb_motor].state == ON) { //skip step if nb_motor is OFF
+		if(stepper[nb_motor].way == DOWN) { //change order of steps to correspond to wanted direction
+			rotate(stepper[nb_motor].step, nb_motor);
+			if(stepper[nb_motor].step>=3) stepper[nb_motor].step = 0;
+			else stepper[nb_motor].step++;
+		} else if(stepper[nb_motor].way == UP){
+			rotate(stepper[nb_motor].step, nb_motor);
+			if(stepper[nb_motor].step<=0) stepper[nb_motor].step = 3;
+			else stepper[nb_motor].step--;
+		}
 	}
 
 	nb_motor++;
-	if(nb_motor >=7) nb_motor=0;
+	if(nb_motor >=8) nb_motor=0;
 }
 
 void setStepperSens(enum SENS s) {
 	for(int j; j<8; j++) {
-		stepperSens[j] = s;
+		stepper[j].way = s;
 	}
 }
 
 void setStepperOnOff(enum ONOFF o) {
 	for(int j; j<8; j++) {
-		stepperONOFF[j] = o;
+		stepper[j].state = o;
 	}
 }
 
