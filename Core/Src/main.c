@@ -61,31 +61,34 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-#define DELAY 50000
+#define DELAY 5000
 
-static unsigned int timer1=0;
-static unsigned int timer_ms=0;
-
+static enum STATE state = START;
 static STEPPER stepper[8] = {
 		{ON, DOWN, 0, DELAY, {GPIOB, GPIOB, GPIOB, GPIOB},
 							{GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_11, GPIO_PIN_10}},
+
 		{ON, DOWN, 0, DELAY, {GPIOA, GPIOC, GPIOB, GPIOC},
 							{GPIO_PIN_7, GPIO_PIN_4, GPIO_PIN_0, GPIO_PIN_5}},
+
 		{ON, DOWN, 0, DELAY, {GPIOA, GPIOA, GPIOA, GPIOA},
 							{GPIO_PIN_3, GPIO_PIN_4, GPIO_PIN_6, GPIO_PIN_5}},
+
 		{ON, DOWN, 0, DELAY, {GPIOC, GPIOA, GPIOA, GPIOA},
 							{GPIO_PIN_3, GPIO_PIN_0, GPIO_PIN_2, GPIO_PIN_1}},
+
 		{ON, DOWN, 0, DELAY, {GPIOC, GPIOC, GPIOC, GPIOC},
 							{GPIO_PIN_13, GPIO_PIN_14, GPIO_PIN_0, GPIO_PIN_15}},
+
 		{ON, DOWN, 0, DELAY, {GPIOB, GPIOB, GPIOB, GPIOB},
 							{GPIO_PIN_6, GPIO_PIN_7, GPIO_PIN_9, GPIO_PIN_8}},
+
 		{ON, DOWN, 0, DELAY, {GPIOD, GPIOB, GPIOB, GPIOB},
 							{GPIO_PIN_2, GPIO_PIN_3, GPIO_PIN_5, GPIO_PIN_4}},
-		{ON, DOWN, 0, DELAY, {GPIOA, GPIOC, GPIOC, GPIOC}, {GPIO_PIN_5,
-							GPIO_PIN_10, GPIO_PIN_12, GPIO_PIN_11}}
-};
 
-static enum STATE state = START;
+		{ON, DOWN, 0, DELAY, {GPIOA, GPIOC, GPIOC, GPIOC},
+							{GPIO_PIN_15, GPIO_PIN_10, GPIO_PIN_12, GPIO_PIN_11}}
+};
 /* USER CODE END 0 */
 
 /**
@@ -122,7 +125,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   SystemClock_Config();
-  HAL_TIM_Base_Start_IT(&htim3);
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
 
   /* USER CODE END 2 */
 
@@ -437,32 +440,26 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void automate() {
-	timer_ms = DELAY;
 	switch(state) {
 		case START:
 			setStepperSens(DOWN);
 			state = BEGIN_MOVEMENT;
 			break;
-		case TRANSITION:
-			HAL_TIM_Base_Start_IT(&htim2);
-			int timer2 = __HAL_TIM_GetCounter(&htim3);
-			if(timer2 >= timer1) {
-				if(timer2-timer1 >= timer_ms) state = IDLE;
-			} else {
-				if(65535-timer2 + timer1 >= timer_ms) state = IDLE;
-			}
-			break;
 		case BEGIN_MOVEMENT:
-			setStepperOnOff(ON);
-			__HAL_TIM_SetCounter(&htim3, 0);
-			timer1 = __HAL_TIM_GetCounter(&htim3);
-			state = TRANSITION;
+				setStepperOnOff(ON);
+				__HAL_TIM_SetCounter(&htim3, 0);
+				state = TRANSITION;
+				break;
+		case TRANSITION: //TODO should wait for longest stepper timer
+			HAL_TIM_Base_Start_IT(&htim2);
+			HAL_TIM_Base_Start_IT(&htim3);
 			break;
-		case IDLE:
+		case IDLE: //TODO start CAN IT when interrupt move to COMM
 			HAL_TIM_Base_Stop_IT(&htim2);
+			HAL_TIM_Base_Stop_IT(&htim3);
 			setStepperOnOff(OFF);
 			break;
-		case COMM:
+		case COMM: //TODO get all informations then go to begin movement
 			state = IDLE;
 			break;
 	}
@@ -475,7 +472,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim) {
 }
 
 void rotate(int step, int nb_motor) {
-	// full drive
 	switch(step) {
 	case 0:
 		 HAL_GPIO_WritePin(stepper[nb_motor].pin[0], stepper[nb_motor].pin_nb[0], GPIO_PIN_RESET);   // IN1
@@ -507,15 +503,20 @@ void rotate(int step, int nb_motor) {
 void Motor_Handling() {
 	static int nb_motor=0;
 
-	if(stepper[nb_motor].state == ON) { //skip step if nb_motor is OFF
-		if(stepper[nb_motor].way == DOWN) { //change order of steps to correspond to wanted direction
-			rotate(stepper[nb_motor].step, nb_motor);
-			if(stepper[nb_motor].step>=3) stepper[nb_motor].step = 0;
-			else stepper[nb_motor].step++;
-		} else if(stepper[nb_motor].way == UP){
-			rotate(stepper[nb_motor].step, nb_motor);
-			if(stepper[nb_motor].step<=0) stepper[nb_motor].step = 3;
-			else stepper[nb_motor].step--;
+	uint16_t timer2 = __HAL_TIM_GetCounter(&htim3);
+	if(timer2 >= stepper[nb_motor].timer) {
+			stepper[nb_motor].state = OFF;
+	} else {
+		if(stepper[nb_motor].state == ON) { //skip step if nb_motor is OFF
+			if(stepper[nb_motor].way == DOWN) { //change order (3->0 / 0->3) of steps to correspond to wanted direction
+				rotate(stepper[nb_motor].step, nb_motor);
+				if(stepper[nb_motor].step>=3) stepper[nb_motor].step = 0;
+				else stepper[nb_motor].step++;
+			} else if(stepper[nb_motor].way == UP){
+				rotate(stepper[nb_motor].step, nb_motor);
+				if(stepper[nb_motor].step<=0) stepper[nb_motor].step = 3;
+				else stepper[nb_motor].step--;
+			}
 		}
 	}
 
@@ -523,12 +524,14 @@ void Motor_Handling() {
 	if(nb_motor >=8) nb_motor=0;
 }
 
+//Put every motor in the same direction
 void setStepperSens(enum SENS s) {
 	for(int j; j<8; j++) {
 		stepper[j].way = s;
 	}
 }
 
+//Put every motor in the same state
 void setStepperOnOff(enum ONOFF o) {
 	for(int j; j<8; j++) {
 		stepper[j].state = o;
